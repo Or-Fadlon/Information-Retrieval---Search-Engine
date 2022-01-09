@@ -1,5 +1,5 @@
 from google.cloud import *
-from inverted_index_gcp import *
+from inverted_index_VM import *
 from pathlib import Path
 from contextlib import closing
 import sys
@@ -24,12 +24,14 @@ def read_pickle(file_name):
     print(f'{file_name} loaded')
     return pick
 
+
 def get_title_by_doc_id(doc_id):
     try:
         return doc_id_to_title_dic[doc_id]
     except:
         return "Invalid Title!"
-        
+
+
 print("Start loading...")
 inverted_title = read_pickle("title2")
 inverted_anchor = read_pickle("anchor_fix")
@@ -40,60 +42,64 @@ doc_id_norm_dict = read_pickle("doc_id_norm_dict")
 doc_id_to_title_dic = read_pickle("doc_id_to_title_dict")
 print("Done!")
 
+TUPLE_SIZE = 6
+TF_MASK = 2 ** 16 - 1  # Masking the 16 low bits of an integer
 
-TUPLE_SIZE = 6       
-TF_MASK = 2 ** 16 - 1 # Masking the 16 low bits of an integer
+
 def read_posting_list(inverted, w):
-  with closing(MultiFileReader()) as reader:
-    locs = inverted.posting_locs[w]
-    b = reader.read(locs, inverted.df[w] * TUPLE_SIZE)
-    posting_list = []
-    for i in range(inverted.df[w]):
-      doc_id = int.from_bytes(b[i*TUPLE_SIZE:i*TUPLE_SIZE+4], 'big')
-      tf = int.from_bytes(b[i*TUPLE_SIZE+4:(i+1)*TUPLE_SIZE], 'big')
-      posting_list.append((doc_id, tf))
-    return posting_list
+    with closing(MultiFileReader()) as reader:
+        locs = inverted.posting_locs[w]
+        b = reader.read(locs, inverted.df[w] * TUPLE_SIZE)
+        posting_list = []
+        for i in range(inverted.df[w]):
+            doc_id = int.from_bytes(b[i * TUPLE_SIZE:i * TUPLE_SIZE + 4], 'big')
+            tf = int.from_bytes(b[i * TUPLE_SIZE + 4:(i + 1) * TUPLE_SIZE], 'big')
+            posting_list.append((doc_id, tf))
+        return posting_list
 
 
 nltk.download('stopwords')
 english_stopwords = frozenset(stopwords.words('english'))
-corpus_stopwords = ["category", "references", "also", "external", "links", 
-                    "may", "first", "see", "history", "people", "one", "two", 
-                    "part", "thumb", "including", "second", "following", 
+corpus_stopwords = ["category", "references", "also", "external", "links",
+                    "may", "first", "see", "history", "people", "one", "two",
+                    "part", "thumb", "including", "second", "following",
                     "many", "however", "would", "became"]  # TODO: calculate the corups stop words words
 RE_WORD = re.compile(r"""[\#\@\w](['\-]?\w){2,24}""", re.UNICODE)
 stemmer = PorterStemmer()
 all_stopwords = english_stopwords.union(corpus_stopwords)
 
-def tokenize(text, stem=False):
-  """
-    This function aims in tokenize a text into a list of tokens.
-    Moreover:
-    * filter stopwords.
-    * change all to lowwer case.
-    * use stemmer
-    
-    Parameters:
-    -----------
-    text: string , represting the text to tokenize.    
-    
-    Returns:
-    -----------
-    list of tokens (e.g., list of tokens).
-    """
-  clean_text = []
 
-  text = text.lower()
-  tokens = [token.group() for token in RE_WORD.finditer(text)]
-  for token in tokens:
-    if token not in all_stopwords:
-      if stem:
-        token = stemmer.stem(token)
-      clean_text.append(token)
-  return clean_text
+def tokenize(text, stem=False):
+    """
+      This function aims in tokenize a text into a list of tokens.
+      Moreover:
+      * filter stopwords.
+      * change all to lowwer case.
+      * use stemmer
+
+      Parameters:
+      -----------
+      text: string , represting the text to tokenize.
+
+      Returns:
+      -----------
+      list of tokens (e.g., list of tokens).
+      """
+    clean_text = []
+
+    text = text.lower()
+    tokens = [token.group() for token in RE_WORD.finditer(text)]
+    for token in tokens:
+        if token not in all_stopwords:
+            if stem:
+                token = stemmer.stem(token)
+            clean_text.append(token)
+    return clean_text
+
 
 import math
 from itertools import chain
+
 
 def get_posting_gen(index, query):
     """
@@ -112,6 +118,7 @@ def get_posting_gen(index, query):
             pls = []
         yield term, pls
 
+
 # When preprocessing the data have a dictionary of document length for each document saved in a variable called `DL`.
 class BM25_from_index:
     """
@@ -124,14 +131,14 @@ class BM25_from_index:
     index: inverted index
     """
 
-    def __init__(self,index,k1=1.5, b=0.75):
+    def __init__(self, index, k1=1.5, b=0.75):
         self.b = b
         self.k1 = k1
         self.index = index
         self.N = len(index.DL)
-        self.AVGDL = sum(index.DL.values())/self.N 
+        self.AVGDL = sum(index.DL.values()) / self.N
 
-    def calc_idf(self,list_of_tokens):
+    def calc_idf(self, list_of_tokens):
         """
         This function calculate the idf values according to the BM25 idf formula for each term in the query.
         
@@ -144,18 +151,17 @@ class BM25_from_index:
         idf: dictionary of idf scores. As follows: 
                                                     key: term
                                                     value: bm25 idf score
-        """        
-        idf = {}        
-        for term in list_of_tokens:            
+        """
+        idf = {}
+        for term in list_of_tokens:
             if term in self.index.df.keys():
                 n_ti = self.index.df[term]
                 idf[term] = math.log(1 + (self.N - n_ti + 0.5) / (n_ti + 0.5))
             else:
-                pass                             
+                pass
         return idf
-        
 
-    def search(self, query,N=100):
+    def search(self, query, N=100):
         """
         This function calculate the bm25 score for given query and document.
         We need to check only documents which are 'candidates' for a given query. 
@@ -180,7 +186,7 @@ class BM25_from_index:
                 candidate.add(doc_id)
         self.idf = self.calc_idf(query)
         results = self._score(query, candidate)
-        query_top_n = sorted(results, key = lambda x: x[1], reverse=True)[:N]
+        query_top_n = sorted(results, key=lambda x: x[1], reverse=True)[:N]
         return query_top_n
         # YOUR CODE HERE
 
@@ -211,7 +217,8 @@ class BM25_from_index:
                 score_ret[doc_id] = score_ret.get(doc_id, 0) + score
         return list(score_ret.items())
 
-def merge_results(title_scores,body_scores,title_weight=0.5,text_weight=0.5,N = 100):    
+
+def merge_results(title_scores, body_scores, title_weight=0.5, text_weight=0.5, N=100):
     """
     This function merge and sort documents retrieved by its weighte score (e.g., title and body). 
 
@@ -244,6 +251,7 @@ def merge_results(title_scores,body_scores,title_weight=0.5,text_weight=0.5,N = 
             temp_dict[doc_id] += text_weight * score
     return temp_dict
 
+
 import threading
 import queue
 
@@ -254,10 +262,12 @@ bm_weight = 0.5
 page_view_weight = 0.25
 page_rank_weight = 0.25
 
+
 def thread_bm25(index, query, queue):
     bm25_t = BM25_from_index(index)
     bm25_queries_score_train_t = bm25_t.search(query, N=50)
     queue.put(bm25_queries_score_train_t)
+
 
 def get_bm25(query):
     queue_title = queue.Queue()
@@ -270,8 +280,9 @@ def get_bm25(query):
     t_body.join()
     bm25_queries_score_train_title = queue_title.get()
     bm25_queries_score_train_body = queue_body.get()
-    BM25_score = merge_results(bm25_queries_score_train_title,bm25_queries_score_train_body,w_title,w_text)
+    BM25_score = merge_results(bm25_queries_score_train_title, bm25_queries_score_train_body, w_title, w_text)
     return BM25_score
+
 
 def add_page_rank_and_view(dic):
     max_bm25 = 0
@@ -287,29 +298,34 @@ def add_page_rank_and_view(dic):
             max_page_rank = page_rank
         if page_view > max_page_view:
             max_page_view = page_view
-            
+
     for key in dic:
         bm = dic[key]
         page_rank = page_rank_dict[key][0]
         page_view = page_view_dict[key]
-        dic[key] = round((bm * bm_weight / max_bm25) + (page_rank * page_rank_weight / max_page_rank) + (page_view * page_view_weight / max_page_view), 5)
+        dic[key] = round((bm * bm_weight / max_bm25) + (page_rank * page_rank_weight / max_page_rank) + (
+                    page_view * page_view_weight / max_page_view), 5)
     return dic
+
 
 def search_procedure(query):
     try:
         BM25 = get_bm25(query)
         calculated = add_page_rank_and_view(BM25)
-        sor = list(sorted([(doc_id, calculated[doc_id]) for doc_id in calculated], key = lambda x: x[1], reverse=True)[:100])
+        sor = list(
+            sorted([(doc_id, calculated[doc_id]) for doc_id in calculated], key=lambda x: x[1], reverse=True)[:100])
         res = map(lambda x: (x[0], get_title_by_doc_id(x[0])), sor)
         return list(res)
     except Exception as e:
         print(f'Error - {e}')
         return []
 
+
 from builtins import *
 import math
-  
-def get_top_n(sim_dict,N=3):
+
+
+def get_top_n(sim_dict, N=3):
     """ 
     Sort and return the highest N documents according to the cosine similarity score.
     Generate a dictionary of cosine similarity scores 
@@ -326,9 +342,10 @@ def get_top_n(sim_dict,N=3):
     -----------
     a ranked list of pairs (doc_id, score) in the length of N.
     """
-    lst = [(doc_id,round(score,5)) for doc_id, score in sim_dict.items()]
-    srot = sorted(lst, key = lambda x: x[1],reverse=True)
+    lst = [(doc_id, round(score, 5)) for doc_id, score in sim_dict.items()]
+    srot = sorted(lst, key=lambda x: x[1], reverse=True)
     return srot[:N]
+
 
 def get_posting_gen(index, query):
     """
@@ -347,38 +364,42 @@ def get_posting_gen(index, query):
             pls = []
         yield term, pls
 
+
 def norm_query(query_counter):
     c = 0
     for key in query_counter:
-        c+=query_counter[key]**2
-    return (1/math.sqrt(c))
+        c += query_counter[key] ** 2
+    return (1 / math.sqrt(c))
 
-def similarity(query_to_search,index,N=3):
+
+def similarity(query_to_search, index, N=3):
     new_query = tokenize(query_to_search)
-    query_counter={}
+    query_counter = {}
     for i in new_query:
         if i not in query_counter:
             query_counter[i] = 0
-        query_counter[i]+=1
+        query_counter[i] += 1
     generator = get_posting_gen(index, list(set(new_query)))
     sim_dict = {}
-    for word,pls in generator:
-        for doc_id,weight in pls:
+    for word, pls in generator:
+        for doc_id, weight in pls:
             if doc_id not in sim_dict:
                 sim_dict[doc_id] = 0
-            sim_dict[doc_id] = sim_dict[doc_id] +query_counter[word]*weight
+            sim_dict[doc_id] = sim_dict[doc_id] + query_counter[word] * weight
     for key in sim_dict:
-        sim_dict[key] = sim_dict[key]*(norm_query(query_counter))*(doc_id_norm_dict[doc_id])
-    return get_top_n(sim_dict,N)
+        sim_dict[key] = sim_dict[key] * (norm_query(query_counter)) * (doc_id_norm_dict[doc_id])
+    return get_top_n(sim_dict, N)
+
 
 def search_body_procedure(query):
     try:
-        cos = similarity(query,inverted_body,N = 100)
+        cos = similarity(query, inverted_body, N=100)
         cos = map(lambda x: (x[0], get_title_by_doc_id(x[0])), cos)
         return list(cos)
     except Exception as e:
         print(f'Error!!! - {e}')
         return []
+
 
 def search_title_procedure(query):
     query = tokenize(query)
@@ -389,9 +410,9 @@ def search_title_procedure(query):
         except:
             print("Term not in inverted_title: " + term)
             pass
-    
+
     if len(results) != 0:
-        results = functools.reduce(lambda a, b: a+b, results)
+        results = functools.reduce(lambda a, b: a + b, results)
         results = map(lambda x: x[0], results)
         counter = Counter()
         counter.update(results)
@@ -409,9 +430,9 @@ def search_anchor_procedure(query):
         except:
             print("Term not in inverted_anchor: " + term)
             pass
-        
+
     if len(results) != 0:
-        results = functools.reduce(lambda a, b: a+b, results)
+        results = functools.reduce(lambda a, b: a + b, results)
         results = map(lambda x: x[0], results)
         counter = Counter()
         counter.update(results)
@@ -443,9 +464,11 @@ def page_view_procedure(lst):
 
 from flask import Flask, request, jsonify
 
+
 class MyFlaskApp(Flask):
     def run(self, host=None, port=None, debug=None, **options):
         super(MyFlaskApp, self).run(host=host, port=port, debug=debug, **options)
+
 
 app = MyFlaskApp(__name__)
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
@@ -472,11 +495,12 @@ def search():
     res = []
     query = request.args.get('query', '')
     if len(query) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
     res = search_procedure(query)
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/search_body")
 def search_body():
@@ -497,11 +521,12 @@ def search_body():
     res = []
     query = request.args.get('query', '')
     if len(query) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
     res = search_body_procedure(query)
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/search_title")
 def search_title():
@@ -523,11 +548,12 @@ def search_title():
     res = []
     query = request.args.get('query', '')
     if len(query) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
     res = search_title_procedure(query)
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/search_anchor")
 def search_anchor():
@@ -550,11 +576,12 @@ def search_anchor():
     res = []
     query = request.args.get('query', '')
     if len(query) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
     res = search_anchor_procedure(query)
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/get_pagerank", methods=['POST'])
 def get_pagerank():
@@ -575,11 +602,12 @@ def get_pagerank():
     res = []
     wiki_ids = request.get_json(force=True, silent=True, cache=False)
     if len(wiki_ids) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
-    res =  page_rank_procedure(wiki_ids)
+    res = page_rank_procedure(wiki_ids)
     # END SOLUTION
     return jsonify(res)
+
 
 @app.route("/get_pageview", methods=['POST'])
 def get_pageview():
@@ -602,11 +630,12 @@ def get_pageview():
     res = []
     wiki_ids = request.get_json(force=True, silent=True, cache=False)
     if len(wiki_ids) == 0:
-      return jsonify(res)
+        return jsonify(res)
     # BEGIN SOLUTION
     res = page_view_procedure(wiki_ids)
     # END SOLUTION
     return jsonify(res)
+
 
 if __name__ == '__main__':
     # run the Flask RESTful API, make the server publicly available (host='0.0.0.0') on port 8080

@@ -10,14 +10,15 @@ import pickle
 from collections import defaultdict
 from contextlib import closing
 
-
 BLOCK_SIZE = 1999998
+
 
 class MultiFileReader:
     """ Sequential binary reader of multiple files of up to BLOCK_SIZE each. """
+
     def __init__(self):
-        self._open_files = {}     
-        
+        self._open_files = {}
+
     def read(self, locs, n_bytes):
         b = []
         for f_name, offset in locs:
@@ -29,21 +30,22 @@ class MultiFileReader:
             b.append(f.read(n_read))
             n_bytes -= n_read
         return b''.join(b)
-  
+
     def close(self):
         for f in self._open_files.values():
             f.close()
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
-        return False 
-
-TUPLE_SIZE = 6       # We're going to pack the doc_id and tf values in this 
-                     # many bytes.
-TF_MASK = 2 ** 16 - 1 # Masking the 16 low bits of an integer
+        return False
 
 
-class InvertedIndex:  
+TUPLE_SIZE = 6  # We're going to pack the doc_id and tf values in this
+# many bytes.
+TF_MASK = 2 ** 16 - 1  # Masking the 16 low bits of an integer
+
+
+class InvertedIndex:
     def __init__(self, docs={}):
         """ Initializes the inverted index and add documents to it (if provided).
         Parameters:
@@ -66,7 +68,7 @@ class InvertedIndex:
         # starts. 
         self.posting_locs = defaultdict(list)
         self.DL = {}
-        
+
         for doc_id, tokens in docs.items():
             self.add_doc(doc_id, tokens)
 
@@ -75,7 +77,7 @@ class InvertedIndex:
             the tf of tokens, then update the index (in memory, no storage 
             side-effects).
         """
-        self.DL[doc_id] = self.DL.get(doc_id,0) + (len(tokens))
+        self.DL[doc_id] = self.DL.get(doc_id, 0) + (len(tokens))
         w2cnt = Counter(tokens)
         self.term_total.update(w2cnt)
         for w, cnt in w2cnt.items():
@@ -110,8 +112,8 @@ class InvertedIndex:
                 b = reader.read(locs[0], self.df[w] * TUPLE_SIZE)
                 posting_list = []
                 for i in range(self.df[w]):
-                    doc_id = int.from_bytes(b[i*TUPLE_SIZE:i*TUPLE_SIZE+4], 'big')
-                    tf = int.from_bytes(b[i*TUPLE_SIZE+4:(i+1)*TUPLE_SIZE], 'big')
+                    doc_id = int.from_bytes(b[i * TUPLE_SIZE:i * TUPLE_SIZE + 4], 'big')
+                    tf = int.from_bytes(b[i * TUPLE_SIZE + 4:(i + 1) * TUPLE_SIZE], 'big')
                     posting_list.append((doc_id, tf))
                 yield w, posting_list
 
@@ -119,4 +121,3 @@ class InvertedIndex:
     def read_index(base_dir, name):
         with open(Path(base_dir) / f'{name}.pkl', 'rb') as f:
             return pickle.load(f)
-
