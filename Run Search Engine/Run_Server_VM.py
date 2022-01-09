@@ -14,23 +14,14 @@ import nltk
 from nltk.stem.porter import *
 from nltk.corpus import stopwords
 from builtins import *
-
-bucket_name = 'fadlonbucket'
-TUPLE_SIZE = 6       
-TF_MASK = 2 ** 16 - 1 # Masking the 16 low bits of an integer
-
 import pickle
-def open_gcp(file_name):
-    client = storage.Client(file_name)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.get_blob('postings_gcp/' + file_name)
-    return blob.open('rb')
+
 
 def read_pickle(file_name):
-    stream = open_gcp(file_name+".pkl")
+    stream = open(f'postings_gcp/{file_name}.pkl')
     pick = pickle.load(stream)
     stream.close()
-    print(file_name)
+    print(f'{file_name} loaded')
     return pick
 
 def get_title_by_doc_id(doc_id):
@@ -49,8 +40,11 @@ doc_id_norm_dict = read_pickle("doc_id_norm_dict")
 doc_id_to_title_dic = read_pickle("doc_id_to_title_dict")
 print("Done!")
 
+
+TUPLE_SIZE = 6       
+TF_MASK = 2 ** 16 - 1 # Masking the 16 low bits of an integer
 def read_posting_list(inverted, w):
-  with closing(MultiFileReader(bucket_name)) as reader:
+  with closing(MultiFileReader()) as reader:
     locs = inverted.posting_locs[w]
     b = reader.read(locs, inverted.df[w] * TUPLE_SIZE)
     posting_list = []
@@ -100,7 +94,6 @@ def tokenize(text, stem=False):
 
 import math
 from itertools import chain
-import time
 
 def get_posting_gen(index, query):
     """
