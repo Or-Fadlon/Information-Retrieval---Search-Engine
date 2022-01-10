@@ -48,6 +48,7 @@ def get_title_by_doc_id(doc_id):
 TUPLE_SIZE = 6
 TF_MASK = 2 ** 16 - 1  # Masking the 16 low bits of an integer
 
+
 def read_posting_list(inverted, w):
     with closing(MultiFileReader()) as reader:
         locs = inverted.posting_locs[w]
@@ -97,6 +98,7 @@ def tokenize(text, stem=False):
                 token = stemmer.stem(token)
             clean_text.append(token)
     return clean_text
+
 
 def get_posting_gen(index, query):
     """
@@ -185,16 +187,12 @@ class BM25_from_index:
         score: float, bm25 score.
         """
         query = tokenize(query)
-        candidate = set([])
-        for w, pls in get_posting_gen(self.index, query):
-            for doc_id, frq in pls:
-                candidate.add(doc_id)
         self.idf = self.calc_idf(query)
-        results = self._score(query, candidate)
+        results = self._score(query)
         query_top_n = results.most_common(N)
         return query_top_n
 
-    def _score(self, query, candidates):
+    def _score(self, query):
         """
         This function calculate the bm25 score for given query and document.
 
@@ -209,15 +207,13 @@ class BM25_from_index:
         """
         score_ret = Counter()
         for w, pls in get_posting_gen(self.index, query):
-            term_frequencies = dict(pls)
-            for doc_id in candidates:
+            for doc_id, value in pls:
                 score = 0.0
                 doc_len = self.index.DL[doc_id]
-                if doc_id in term_frequencies:
-                    freq = term_frequencies[doc_id]
-                    numerator = self.idf[w] * freq * (self.k1 + 1)
-                    denominator = freq + self.k1 * (1 - self.b + self.b * doc_len / self.AVGDL)
-                    score = round((numerator / denominator), 5)
+                freq = value
+                numerator = self.idf[w] * freq * (self.k1 + 1)
+                denominator = freq + self.k1 * (1 - self.b + self.b * doc_len / self.AVGDL)
+                score = round((numerator / denominator), 5)
                 score_ret[doc_id] = round(score_ret.get(doc_id, 0) + score, 5)
         return score_ret
 
@@ -265,6 +261,7 @@ w_text = 1 - w_title
 bm_weight = 0.5
 page_view_weight = 0.25
 page_rank_weight = 0.25
+
 
 def thread_bm25(index, query, queue):
     bm25_t = BM25_from_index(index)
@@ -373,24 +370,6 @@ def get_top_n(sim_dict, N=3):
     lst = [(doc_id, round(score, 5)) for doc_id, score in sim_dict.items()]
     srot = sorted(lst, key=lambda x: x[1], reverse=True)
     return srot[:N]
-
-
-def get_posting_gen(index, query):
-    """
-    This function returning the generator working with posting list.
-
-    Parameters:
-    ----------
-    index: inverted index
-    """
-    words = []
-    pls = []
-    for term in query:
-        try:
-            pls = read_posting_list(index, term)
-        except:
-            pls = []
-        yield term, pls
 
 
 def norm_query(query_counter):
