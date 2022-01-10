@@ -1,19 +1,14 @@
 from google.cloud import *
 from inverted_index_gcp import *
 from contextlib import closing
-import sys
-from collections import Counter, OrderedDict
-import itertools
-from itertools import islice, count, groupby
-import os
-import re
-from operator import itemgetter
+from collections import Counter
 import functools
 import nltk
 from nltk.stem.porter import *
 from nltk.corpus import stopwords
-from builtins import *
 import pickle
+import math
+from builtins import *
 
 
 def read_pickle(file_name):
@@ -136,8 +131,18 @@ class BM25_from_index:
         self.b = b
         self.k1 = k1
         self.index = index
-        self.N = len(index.DL)
-        self.AVGDL = sum(index.DL.values()) / self.N
+
+        try:
+            self.N = index.N
+        except:
+            index.N = len(index.DL)
+            self.N = index.N
+
+        try:
+            self.AVGDL = index.AVGDL
+        except:
+            index.AVGDL = sum(index.DL.values()) / len(index.DL)
+            self.AVGDL = index.AVGDL
 
     def calc_idf(self, list_of_tokens):
         """
@@ -145,7 +150,7 @@ class BM25_from_index:
 
         Parameters:
         -----------
-        query: list of token representing the query. For example: ['look', 'blue', 'sky']
+        list_of_tokens: list of token representing the query. For example: ['look', 'blue', 'sky']
 
         Returns:
         -----------
@@ -173,7 +178,7 @@ class BM25_from_index:
         Parameters:
         -----------
         query: list of token representing the query. For example: ['look', 'blue', 'sky']
-        doc_id: integer, document id.
+        N: int, top number to return
 
         Returns:
         -----------
@@ -196,7 +201,7 @@ class BM25_from_index:
         Parameters:
         -----------
         query: list of token representing the query. For example: ['look', 'blue', 'sky']
-        doc_id: integer, document id.
+        candidates: lis, doc_id of all the candidates docs
 
         Returns:
         -----------
@@ -261,29 +266,57 @@ bm_weight = 0.5
 page_view_weight = 0.25
 page_rank_weight = 0.25
 
-
 def thread_bm25(index, query, queue):
     bm25_t = BM25_from_index(index)
     bm25_queries_score_train_t = bm25_t.search(query, N=50)
     queue.put(bm25_queries_score_train_t)
 
 
-def get_bm25(query):
-    queue_title = queue.Queue()
-    queue_body = queue.Queue()
-    t_title = threading.Thread(target=thread_bm25, args=(inverted_title, query, queue_title))
-    t_body = threading.Thread(target=thread_bm25, args=(inverted_body, query, queue_body))
-    t_title.start()
-    t_body.start()
-    t_title.join()
-    t_body.join()
-    bm25_queries_score_train_title = queue_title.get()
-    bm25_queries_score_train_body = queue_body.get()
+def get_bm25(query, use_thread=True):
+    """
+    find the best bm25 docs and scores for the query.
+    using title and body index
+
+    Parameters:
+    -----------
+    query: list of token representing the query. For example: ['look', 'blue', 'sky']
+
+    Returns:
+    -----------
+    score: float, bm25 score.
+    """
+    if use_thread:
+        queue_title = queue.Queue()
+        queue_body = queue.Queue()
+        t_title = threading.Thread(target=thread_bm25, args=(inverted_title, query, queue_title))
+        t_body = threading.Thread(target=thread_bm25, args=(inverted_body, query, queue_body))
+        t_title.start()
+        t_body.start()
+        t_title.join()
+        t_body.join()
+        bm25_queries_score_train_title = queue_title.get()
+        bm25_queries_score_train_body = queue_body.get()
+    else:
+        bm25_title = BM25_from_index(inverted_title)
+        bm25_queries_score_train_title = bm25_title.search(query, N=50)
+        bm25_body = BM25_from_index(inverted_body)
+        bm25_queries_score_train_body = bm25_body.search(query, N=50)
     BM25_score = merge_results(bm25_queries_score_train_title, bm25_queries_score_train_body, w_title, w_text)
     return BM25_score
 
 
 def add_page_rank_and_view(dic):
+    """
+    calculate the final score using all the parameters: bm25, page view, page rank.
+
+    Parameters:
+    -----------
+    dic: dictionary, (doc_id, bm25_score)
+
+    Returns:
+    -----------
+    dictionary: (doc_id, new score).
+    """
     max_bm25 = 0
     max_page_rank = 0
     max_page_view = 0
@@ -318,10 +351,6 @@ def search_procedure(query):
     except Exception as e:
         print(f'Error - {e}')
         return []
-
-
-from builtins import *
-import math
 
 
 def get_top_n(sim_dict, N=3):
@@ -365,6 +394,17 @@ def get_posting_gen(index, query):
 
 
 def norm_query(query_counter):
+    """
+    calculate query normalize factor for tf-idf.
+
+    Parameters:
+    -----------
+    query_counter: counter of the words of the query
+
+    Returns:
+    -----------
+    float: normalize factor.
+    """
     c = 0
     for key in query_counter:
         c += query_counter[key] ** 2
