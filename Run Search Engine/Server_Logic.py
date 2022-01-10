@@ -207,7 +207,10 @@ class BM25_from_index:
         """
         score_ret = Counter()
         for w, pls in get_posting_gen(self.index, query):
+            dic = {}
             for doc_id, value in pls:
+                dic[doc_id] = dic.get(doc_id, 0) + value
+            for doc_id, value in dic.items():
                 score = 0.0
                 doc_len = self.index.DL[doc_id]
                 freq = value
