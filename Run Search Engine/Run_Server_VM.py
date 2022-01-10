@@ -1,5 +1,5 @@
 from google.cloud import *
-from inverted_index_VM import *
+from inverted_index_gcp import *
 from pathlib import Path
 from contextlib import closing
 import sys
@@ -18,7 +18,7 @@ import pickle
 
 
 def read_pickle(file_name):
-    stream = open(f'postings_gcp/{file_name}.pkl')
+    stream = open(f'postings_gcp/{file_name}.pkl', 'rb')
     pick = pickle.load(stream)
     stream.close()
     print(f'{file_name} loaded')
