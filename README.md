@@ -1,10 +1,11 @@
 # Information Retrieval - Search-Engine
 ## Summery:
-this project is the final our final project in the "Introduction to Information Retrieval" course 👷.
+As part of our bachelor degree in "Software and Information System Engineering" we took the "Introduction to Information Retrieval" course, This project is the final project in the course 👷.
 
-in the project we developed a serch-engine over [Wikipedia](https://www.wikipedia.org/) data.
+In that course, we acquired knowledge regarding different indexing, retrieval, crawling, and "IR-Engines" evaluation techniques.
 
-we have built the indexes we used in this project in the [Google Cloud Platform](https://cloud.google.com/).
+In this project, we developed a search engine over [Wikipedia](https://www.wikipedia.org/) data.
+We have built the Indexes for out engine using the [Google Cloud Platform](https://cloud.google.com/) computing power.
 
 
 ## Retrival Methodes:
@@ -20,3 +21,12 @@ in this search-engine we have combine several retrival methodes include:
 * Wikipedia title
 * Wikipedia body text
 * Wikipedia anchor text
+
+## Endpoints
+The engine use 6 different endpoints, each endpoint retrival data in a diffarent way:
+- **/search?query=??? [Get]-** ??? for your wuery. Use of BM25 method (title and body) for retrival, Use BM-25 score, page-rank and page-view for rating the retrivaled documents.
+- **/search_body?query=??? [Get]-** ??? for your query. Use tf-idf and cosine-similarity score to select the best resaults.
+- **/search_title?query=??? [Get]-** ??? for your query. Use a terms binary ranking existing in the title.
+- **/search_anchor?query=??? [Get]-** ??? for your query. Use a terms binary ranking existing in the anchor text.
+- **/get_pageview [POST]-** Insert wiki id's in the request body using the 'json' parameter. Retrive the wiki doc page views (Augoust 2021).
+- **/get_pagerank [POST]-** Insert wiki id's in the request body using the 'json' parameter. Retrive the wiki doc page rank.
